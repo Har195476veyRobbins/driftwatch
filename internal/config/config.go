@@ -2,6 +2,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -9,77 +10,74 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config holds the top-level daemon configuration.
+// Config is the top-level daemon configuration.
 type Config struct {
 	ComposePath string        `yaml:"compose_path"`
 	Interval    time.Duration `yaml:"interval"`
+	DockerHost  string        `yaml:"docker_host"`
 	Notify      NotifyConfig  `yaml:"notify"`
-	Docker      DockerConfig  `yaml:"docker"`
+	Filter      FilterConfig  `yaml:"filter"`
 }
 
 // NotifyConfig controls how drift results are reported.
 type NotifyConfig struct {
-	Level  string `yaml:"level"`  // silent | summary | verbose
-	Output string `yaml:"output"` // stdout | stderr
+	Level  string `yaml:"level"`
+	Output string `yaml:"output"`
 }
 
-// DockerConfig holds Docker daemon connection settings.
-type DockerConfig struct {
-	Host    string `yaml:"host"`
-	Version string `yaml:"version"`
+// FilterConfig mirrors filter.Config for YAML unmarshalling.
+type FilterConfig struct {
+	Include       []string `yaml:"include"`
+	Exclude       []string `yaml:"exclude"`
+	LabelSelector string   `yaml:"label_selector"`
 }
 
-// Defaults applied when fields are zero-valued.
 const (
-	DefaultComposePath = "docker-compose.yml"
-	DefaultInterval    = 30 * time.Second
-	DefaultNotifyLevel = "summary"
-	DefaultOutput      = "stdout"
+	defaultComposePath = "docker-compose.yml"
+	defaultInterval    = 30 * time.Second
+	defaultNotifyLevel = "summary"
+	defaultOutput      = "stdout"
 )
 
-// Load reads a YAML config file from path and applies defaults.
+// Load reads a YAML config file from path and returns a validated Config.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("config: read %q: %w", path, err)
 	}
-
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("config: parse %q: %w", path, err)
 	}
-
 	applyDefaults(&cfg)
-
 	if err := validate(&cfg); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("config: invalid: %w", err)
 	}
-
 	return &cfg, nil
 }
 
 func applyDefaults(cfg *Config) {
 	if cfg.ComposePath == "" {
-		cfg.ComposePath = DefaultComposePath
+		cfg.ComposePath = defaultComposePath
 	}
-	if cfg.Interval <= 0 {
-		cfg.Interval = DefaultInterval
+	if cfg.Interval == 0 {
+		cfg.Interval = defaultInterval
 	}
 	if cfg.Notify.Level == "" {
-		cfg.Notify.Level = DefaultNotifyLevel
+		cfg.Notify.Level = defaultNotifyLevel
 	}
 	if cfg.Notify.Output == "" {
-		cfg.Notify.Output = DefaultOutput
+		cfg.Notify.Output = defaultOutput
 	}
 }
 
 func validate(cfg *Config) error {
-	valid := map[string]bool{"silent": true, "summary": true, "verbose": true}
-	if !valid[cfg.Notify.Level] {
-		return fmt.Errorf("config: invalid notify level %q (want silent|summary|verbose)", cfg.Notify.Level)
+	if cfg.Interval < time.Second {
+		return errors.New("interval must be at least 1s")
 	}
-	if cfg.Notify.Output != "stdout" && cfg.Notify.Output != "stderr" {
-		return fmt.Errorf("config: invalid output %q (want stdout|stderr)", cfg.Notify.Output)
+	validLevels := map[string]bool{"silent": true, "summary": true, "verbose": true}
+	if !validLevels[cfg.Notify.Level] {
+		return fmt.Errorf("notify.level %q is not valid (silent|summary|verbose)", cfg.Notify.Level)
 	}
 	return nil
 }

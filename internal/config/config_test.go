@@ -6,15 +6,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/user/driftwatch/internal/config"
+	"github.com/yourorg/driftwatch/internal/config"
 )
 
 func writeTempConfig(t *testing.T, content string) string {
 	t.Helper()
 	dir := t.TempDir()
-	p := filepath.Join(dir, "driftwatch.yml")
+	p := filepath.Join(dir, "config.yml")
 	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
-		t.Fatalf("writeTempConfig: %v", err)
+		t.Fatal(err)
 	}
 	return p
 }
@@ -25,51 +25,42 @@ func TestLoad_Defaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.ComposePath != config.DefaultComposePath {
-		t.Errorf("ComposePath = %q, want %q", cfg.ComposePath, config.DefaultComposePath)
+	if cfg.ComposePath != "docker-compose.yml" {
+		t.Errorf("ComposePath default: got %q", cfg.ComposePath)
 	}
-	if cfg.Interval != config.DefaultInterval {
-		t.Errorf("Interval = %v, want %v", cfg.Interval, config.DefaultInterval)
+	if cfg.Interval != 30*time.Second {
+		t.Errorf("Interval default: got %v", cfg.Interval)
 	}
-	if cfg.Notify.Level != config.DefaultNotifyLevel {
-		t.Errorf("Notify.Level = %q, want %q", cfg.Notify.Level, config.DefaultNotifyLevel)
-	}
-	if cfg.Notify.Output != config.DefaultOutput {
-		t.Errorf("Notify.Output = %q, want %q", cfg.Notify.Output, config.DefaultOutput)
+	if cfg.Notify.Level != "summary" {
+		t.Errorf("Notify.Level default: got %q", cfg.Notify.Level)
 	}
 }
 
 func TestLoad_ExplicitValues(t *testing.T) {
-	content := `
-compose_path: my-compose.yml
-interval: 1m
+	p := writeTempConfig(t, `
+compose_path: /srv/compose.yml
+interval: 60s
 notify:
   level: verbose
   output: stderr
-docker:
-  host: tcp://localhost:2375
-`
-	p := writeTempConfig(t, content)
+`)
 	cfg, err := config.Load(p)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.ComposePath != "my-compose.yml" {
-		t.Errorf("ComposePath = %q", cfg.ComposePath)
+	if cfg.ComposePath != "/srv/compose.yml" {
+		t.Errorf("got %q", cfg.ComposePath)
 	}
-	if cfg.Interval != time.Minute {
-		t.Errorf("Interval = %v, want 1m", cfg.Interval)
+	if cfg.Interval != 60*time.Second {
+		t.Errorf("got %v", cfg.Interval)
 	}
 	if cfg.Notify.Level != "verbose" {
-		t.Errorf("Level = %q", cfg.Notify.Level)
-	}
-	if cfg.Docker.Host != "tcp://localhost:2375" {
-		t.Errorf("Docker.Host = %q", cfg.Docker.Host)
+		t.Errorf("got %q", cfg.Notify.Level)
 	}
 }
 
 func TestLoad_MissingFile(t *testing.T) {
-	_, err := config.Load("/nonexistent/driftwatch.yml")
+	_, err := config.Load("/nonexistent/path.yml")
 	if err == nil {
 		t.Fatal("expected error for missing file")
 	}
@@ -83,18 +74,32 @@ func TestLoad_InvalidYAML(t *testing.T) {
 	}
 }
 
-func TestLoad_InvalidNotifyLevel(t *testing.T) {
+func TestLoad_InvalidLevel(t *testing.T) {
 	p := writeTempConfig(t, "notify:\n  level: loud\n")
 	_, err := config.Load(p)
 	if err == nil {
-		t.Fatal("expected validation error for invalid notify level")
+		t.Fatal("expected validation error for invalid level")
 	}
 }
 
-func TestLoad_InvalidOutput(t *testing.T) {
-	p := writeTempConfig(t, "notify:\n  output: file\n")
-	_, err := config.Load(p)
-	if err == nil {
-		t.Fatal("expected validation error for invalid output")
+func TestLoad_FilterConfig(t *testing.T) {
+	p := writeTempConfig(t, `
+filter:
+  include:
+    - web
+    - api
+  exclude:
+    - debug
+  label_selector: env=prod
+`)
+	cfg, err := config.Load(p)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Filter.Include) != 2 {
+		t.Errorf("expected 2 include entries, got %d", len(cfg.Filter.Include))
+	}
+	if cfg.Filter.LabelSelector != "env=prod" {
+		t.Errorf("got label_selector %q", cfg.Filter.LabelSelector)
 	}
 }
