@@ -6,40 +6,46 @@ import (
 	"strings"
 )
 
-// Summary holds aggregate statistics from a drift detection run.
+// Summary holds aggregated drift information.
 type Summary struct {
-	Total   int
-	Drifted int
-	Clean   int
+	Total      int
+	DriftCount int
+	Results    []Result
 }
 
-// Summarize computes aggregate stats from a slice of DriftResults.
-func Summarize(results []DriftResult) Summary {
-	s := Summary{Total: len(results)}
+// OneLiner returns a short human-readable summary string.
+func (s Summary) OneLiner() string {
+	if s.DriftCount == 0 {
+		return fmt.Sprintf("no drift detected (%d services checked)", s.Total)
+	}
+	return fmt.Sprintf("%d/%d services have drift", s.DriftCount, s.Total)
+}
+
+// Summarize aggregates a slice of Results into a Summary.
+func Summarize(results []Result) Summary {
+	s := Summary{Total: len(results), Results: results}
 	for _, r := range results {
-		if r.Drifted {
-			s.Drifted++
-		} else {
-			s.Clean++
+		if r.HasDrift() {
+			s.DriftCount++
 		}
 	}
 	return s
 }
 
-// WriteReport writes a human-readable drift report to w.
-func WriteReport(w io.Writer, results []DriftResult) {
-	for _, r := range results {
-		if r.Drifted {
-			fmt.Fprintf(w, "[DRIFT]  %s\n", r.Service)
-			for _, reason := range r.Reasons {
-				fmt.Fprintf(w, "         - %s\n", reason)
-			}
-		} else {
-			fmt.Fprintf(w, "[OK]     %s\n", r.Service)
+// WriteReport writes a detailed drift report to w.
+func WriteReport(w io.Writer, summary Summary) {
+	fmt.Fprintf(w, "Drift Report\n")
+	fmt.Fprintf(w, "============\n")
+	fmt.Fprintf(w, "Services checked : %d\n", summary.Total)
+	fmt.Fprintf(w, "Services drifted : %d\n\n", summary.DriftCount)
+
+	for _, r := range summary.Results {
+		if !r.HasDrift() {
+			continue
+		}
+		fmt.Fprintf(w, "Service: %s\n", r.Service)
+		for _, d := range r.Diffs {
+			fmt.Fprintf(w, "  - %s\n", strings.TrimSpace(d))
 		}
 	}
-
-	s := Summarize(results)
-	fmt.Fprintf(w, "\n%s\n", strings.Repeat("-", 40))
-	fmt.Fprintf(w, "Total: %d  Clean: %d  Drifted: %d\n", s.Total, s.Clean, s.Drifted)
 }
