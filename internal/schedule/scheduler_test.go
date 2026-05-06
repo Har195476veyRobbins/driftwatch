@@ -76,3 +76,23 @@ func TestScheduler_TicksMultipleTimes(t *testing.T) {
 		t.Errorf("expected at least 3 calls, got %d", got)
 	}
 }
+
+func TestScheduler_DeadlineExceeded(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	s := New(Config{Interval: 10 * time.Second})
+	done := make(chan error, 1)
+	go func() {
+		done <- s.Run(ctx, func(_ context.Context) {})
+	}()
+
+	select {
+	case err := <-done:
+		if err != context.DeadlineExceeded {
+			t.Errorf("expected context.DeadlineExceeded, got %v", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Error("scheduler did not stop after deadline exceeded")
+	}
+}
