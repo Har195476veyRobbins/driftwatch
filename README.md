@@ -41,6 +41,7 @@ When drift is detected, `driftwatch` logs a diff to stdout and optionally sends 
 | `--interval` | `60s` | How often to check for drift |
 | `--notify` | `` | Webhook URL for drift alerts |
 | `--strict` | `false` | Exit non-zero on first drift detected |
+| `--log-format` | `text` | Log output format: `text` or `json` |
 
 ---
 
