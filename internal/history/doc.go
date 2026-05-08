@@ -10,4 +10,12 @@
 //	store.Record(results)             // called after each Detect run
 //	last, ok := store.Last()          // inspect the most recent result
 //	all  := store.All()               // iterate over all retained entries
+//	count := store.Len()              // number of entries currently stored
+//	store.Reset()                     // clear all retained entries
+//
+// Ring-buffer behaviour:
+//
+// Once the store reaches its capacity, each new call to Record evicts the
+// oldest entry, so memory usage remains bounded regardless of how long the
+// process runs.
 package history
